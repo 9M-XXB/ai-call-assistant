@@ -17,3 +17,8 @@ config.json
 __pycache__/
 *.pyc
 .DS_Store
+
+# 本地研究/部署文档——仅本地留存, 不入库
+可行性分析.md
+部署方案.md
+电脑方案详解.md

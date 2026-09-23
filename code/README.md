@@ -1,7 +1,6 @@
 # AI来电助手 · 代码文档（Mac + ADB 无 App 架构）
 
-代码：[`assistant.py`](assistant.py)（单文件，Python ≥3.9，无强依赖第三方包）+ [`config.example.json`](config.example.json)。
-上层设计与原理见 [../电脑方案详解.md](../电脑方案详解.md)；本文只讲代码怎么装、怎么配、怎么跑。
+代码：[`assistant.py`](assistant.py)（单文件，Python ≥3.9，无强依赖第三方包）+ [`config.example.json`](config.example.json)。本文只讲代码怎么装、怎么配、怎么跑。
 
 ---
 
