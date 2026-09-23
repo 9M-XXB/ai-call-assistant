@@ -10,6 +10,21 @@
 > - 音频链路（扬声器/麦克风摆放、电平标定、Blue Yeti 麦克风）在 **MacBook Air** 上完成；
 > - 其他品牌手机或 Windows/Linux 电脑可参考架构自行适配，核心限制（Android 不开放通话音频流）是共通的。
 
+## 软件版本（2026-09-22 实测已验证组合）
+
+| 组件 | 已验证版本 |
+|---|---|
+| macOS（MacBook Air） | **26.6.2**（Build 25G83） |
+| ColorOS（一加 Ace 5 至尊版，PLC110） | **V16.1.0**（Android 16，build `PLC110_16.0.10.500(CN01)`） |
+| O+ Connect（可选组件） | Mac 端 **16.2.10** / 手机端 **16.25.6**（`com.oplus.linker`） |
+| Python | 3.14（mlx-whisper 运行于 3.14.7） |
+| adb | 37.0.1（homebrew android-platform-tools） |
+| ffmpeg | 9.0.2（需含 `afftdn` / `arnndn` / `speechnorm` 滤镜） |
+| 转写 | mlx-whisper 0.4.3 + `mlx-community/whisper-medium-mlx` |
+| 摘要 | ollama + `qwen2.5:7b-instruct-q4_K_M`（4.7GB） |
+
+> 版本敏感点：ColorOS 的「USB 调试（安全设置）」开关位置、`dumpsys telephony.registry` 字段格式、macOS 对终端 App 的麦克风权限（返回静音而非报错）。O+ Connect 仅用于投屏监控与人工接管，属可选组件，缺省不影响自动接听。
+
 ## 工作原理
 
 ```
