@@ -11,5 +11,6 @@
   "ffmpeg_audio_device": ":0",
   "whisper_model": "mlx-community/whisper-medium-mlx",
   "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
-  "ollama_url": "http://127.0.0.1:11434/api/generate"
+  "ollama_url": "http://127.0.0.1:11434/api/generate",
+  "rnn_model_url": "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/somnolent-hogwash-2018-09-01/sh.rnnn"
 }

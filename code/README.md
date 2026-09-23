@@ -62,6 +62,8 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 | `auto_delay_sec` | `10` | 响铃多少秒后自动接听 |
 | `max_record_sec` | `180` | 留言最长时长，超过由脚本发 ENDCALL 挂断 |
 | `call_volume_keys` | `15` | 接通后自动按 N 次"音量上"把通话音量拉满（让对方声音在听筒处足够响，供录音通道拾取；`0` 禁用） |
+| `denoise_level` | `"rnn"` | 录音降噪档位：`off`（仅 80–3800Hz 带通）/ `band` / `fft`（FFT 谱减法）/ **`rnn`（RNNoise 神经网络降噪 + 语音电平归一化，最激进）**。`rnn` 首次使用自动下载约 300KB 模型到 `models/`，失败自动回退 `fft` |
+| `rnn_model_url` | GregorR/rnnoise-models | RNNoise 模型下载地址（somnolent-hogwash/sh.rnnn） |
 | `answer_mode` | `"all"` | `all` 全部自动接听；`whitelist` 仅白名单 |
 | `whitelist` | `[]` | 号码子串匹配列表，如 `["138"]` |
 | `blocklist` | `[]` | 永不自动接听的号码子串（命中只弹通知） |
@@ -70,6 +72,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 | `beep` | `true` | greeting 后播放系统"叮"提示音再录音 |
 | `ffmpeg_audio_device` | `":0"` | AVFoundation 音频设备号（`--list-devices` 查询） |
 | `whisper_model` | `mlx-community/whisper-medium-mlx` | HuggingFace 上的 mlx 模型仓；首次运行自动下载 |
+| `whisper_initial_prompt` | `"以下是普通话的句子。"` | Whisper 初始提示，偏置输出简体中文；多语言场景可置空 `""` |
 | `ollama_model` / `ollama_url` | qwen2.5:7b / 本地 11434 | 本地摘要 LLM；换云 API 时改 `summarize()` |
 
 **greeting 制作**：16kHz 单声道，**建议 ≤15 秒**（过长对方会在留言前挂断），内容**建议含录音告知**（如"本次通话将被录音"，合规要求因地区而异）。可用自己录音、`say -v Tingting`（macOS 本地合成）、`edge-tts`（免费）或 ElevenLabs 克隆生成；多语言各存 `greetings/` 一份。改文件内容不改文件名即可生效，无需重启服务。
@@ -81,10 +84,24 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 | `python3 assistant.py --check` | 自检：adb/连接/greeting/ffmpeg/whisper/ollama 六项 |
 | `python3 assistant.py --list-devices` | 列出 AVFoundation 录音设备，填配置 |
 | `python3 assistant.py --record-test 6` | **录音通道标定**：倒计时后录 6 秒，此期间对着手机听筒缝弹指/说话，输出 mean/max 音量并给出合格判定（max ≥ -20dB 为合格） |
+| `python3 assistant.py --process WAV` | 对已有录音手动执行 **转写 + 摘要**（终端打印结果并落盘），也是验证转写/摘要依赖的工具 |
 | `python3 assistant.py --once` | 打印当前通话状态与来电号码（调试解析用） |
 | `python3 assistant.py` | 常驻运行 |
 
-## 3.5 录音通道（录对方留言）
+## 5. 降噪（`denoise_level`）
+
+| 档位 | 滤波链 | 效果 |
+|---|---|---|
+| `off` | 带通 80–3800Hz | 只切频带 |
+| `band` | 带通 100–3400Hz | 同上，电话频带 |
+| `fft` | 带通 + `afftdn`（FFT 谱减法，nr=28） | 压稳态噪声 |
+| **`rnn`（默认）** | 带通 + 轻度谱减 + **`arnndn`（RNNoise 循环神经网络）** + `speechnorm` 语音电平归一化 | 最激进：对稳态与非稳态噪声（键盘、敲桌、呼吸）都有效，噪声底实测可压低约 9dB |
+
+实测参考（14 秒真机留言）：噪声底 mean -43dB → **-52dB**，语音峰值 -23 → -24.4dB（保留）。RNNoise 模型约 300KB，`models/` 目录自动下载一次；下载失败自动回退 `fft` 档。
+
+> 注意：降噪越激进，极微弱的语音也可能被误伤（Whisper 转写返回空即录音无可识别语音的信号）——先保证第 6 节的拾音物理位置，再谈降噪。
+
+## 6. 录音通道（录对方留言）
 
 对方的声音从 A 机**顶部听筒缝**出来（手机保持听筒模式，脚本接通后已自动拉满通话音量）。录音设备由 `ffmpeg_audio_device` 指定（Mac 内置麦克风或 USB 麦），三种拾音摆法：
 
@@ -102,7 +119,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 - **人不在**：自动接听 → greeting → 提示音 → 对方留言（最长 180 秒，超时脚本挂断）→ 挂断后本地转写 + 摘要 → Mac 通知。
 - 产物：`recordings/*.wav`（16kHz 单声道，约 2MB/分钟）、`transcripts/*.txt`、`summaries/*.md`（含元信息+摘要+原始转写）、`logs/assistant.log`。
 
-## 5. 已知限制与扩展点
+## 7. 已知限制与扩展点
 
 | 限制 | 原因 / 现状 | 想改的话 |
 |---|---|---|
@@ -114,7 +131,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 | `KEYCODE_HEADSETHOOK` 接听在个别 ROM 失效 | OEM 定制 | 开「USB 调试（安全设置）」；仍无效则改 scrcpy 触摸接听按钮 |
 | 摘要走本地 ollama，8GB 机器偏慢 | 模型内存 | 换 3B 模型，或改 `summarize()` 调云端 API（注意隐私取舍） |
 
-## 6. launchd 常驻（可选）
+## 8. launchd 常驻（可选）
 
 ```xml
 <!-- ~/Library/Launchers/com.aicall.assistant.plist 略——用下面命令最简 -->
@@ -147,7 +164,7 @@ brew install tmux && tmux new -d -s aicall 'python3 ~/.../code/assistant.py'
 
 > 把路径换成实际位置；`KeepAlive` 保证脚本崩溃自动重启。另记得防止 Mac 系统休眠（`caffeinate -s` 或电源设置），否则服务随睡眠停摆。
 
-## 7. 故障速查
+## 9. 故障速查
 
 | 症状 | 处置 |
 |---|---|

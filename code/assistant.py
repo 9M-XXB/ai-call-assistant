@@ -24,6 +24,7 @@ import argparse
 import json
 import logging
 import re
+import shutil
 import subprocess as sp
 import sys
 import threading
@@ -42,6 +43,8 @@ DEFAULTS = {
     "auto_delay_sec": 10,          # 响铃多少秒后自动接听
     "max_record_sec": 180,         # 留言最长录音时长, 超时由脚本挂断
     "call_volume_keys": 15,        # 接通后按几次音量上(拉满通话音量, 供录音通道拾取听筒声; 0=禁用)
+    "denoise_level": "rnn",        # 降噪档位: off | band(仅带通) | fft(谱减法) | rnn(RNNoise 神经网络, 最激进)
+    "rnn_model_url": "https://raw.githubusercontent.com/GregorR/rnnoise-models/master/somnolent-hogwash-2018-09-01/sh.rnnn",
     "answer_mode": "all",          # all=全部自动接听 | whitelist=仅白名单号码
     "whitelist": [],               # answer_mode=whitelist 时生效, 子串匹配
     "blocklist": [],               # 永不自动接听的号码, 子串匹配(如推销号段)
@@ -50,6 +53,7 @@ DEFAULTS = {
     "beep": True,                  # greeting 播完后播放系统提示音再开始录音
     "ffmpeg_audio_device": ":0",   # 用 --list-devices 查询后填写
     "whisper_model": "mlx-community/whisper-medium-mlx",
+    "whisper_initial_prompt": "以下是普通话的句子。",   # 偏置简体中文; 多语言场景可置空
     "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
     "ollama_url": "http://127.0.0.1:11434/api/generate",
 }
@@ -133,12 +137,46 @@ def play(path: Path):
     if r.returncode != 0:
         raise RuntimeError(f"afplay 播放失败: {path}")
 
+def ensure_rnn_model(cfg: Config) -> str | None:
+    """RNNoise 模型: 本地有就用, 没有联网下载一次; 失败返回 None(回退 fft 降噪)"""
+    model_dir = BASE / "models"
+    model_path = model_dir / "somnolent-hogwash.rnnn"
+    if model_path.exists() and model_path.stat().st_size > 1_000_000:
+        return str(model_path)
+    try:
+        model_dir.mkdir(exist_ok=True)
+        LOG.info("下载 RNNoise 降噪模型(约 8MB, 仅一次)…")
+        urllib.request.urlretrieve(cfg.rnn_model_url, model_path)
+        LOG.info("模型已就绪: %s", model_path)
+        return str(model_path)
+    except Exception as e:
+        LOG.warning("RNNoise 模型下载失败, 回退 fft 降噪: %s", e)
+        return None
+
+def denoise_chain(cfg: Config) -> str:
+    """按配置档位生成 ffmpeg 滤波链。rnn = RNNoise 神经网络降噪, 对稳态/非稳态噪声都激进"""
+    lvl = str(cfg.denoise_level)
+    if lvl == "off":
+        return "highpass=f=80,lowpass=f=3800"
+    if lvl == "fft":
+        return "highpass=f=100,lowpass=f=3400,afftdn=nr=28:nf=-34,tn=1"
+    if lvl == "rnn":
+        model = ensure_rnn_model(cfg)
+        if model:
+            return ("highpass=f=100,lowpass=f=3400,"
+                    f"afftdn=nr=12:nf=-28,arnndn=m={model},"
+                    "speechnorm=e=6.25:r=0.00001:l=1")
+        return "highpass=f=100,lowpass=f=3400,afftdn=nr=28:nf=-34,tn=1"
+    return "highpass=f=80,lowpass=f=3800"            # band
+
 def start_recording(cfg: Config, wav: Path) -> sp.Popen:
-    """16kHz 单声道 WAV + 语音频带滤波(80–3800Hz, 切掉低频隆隆声与高频嘶声); 调用方负责 terminate()"""
+    """16kHz 单声道 WAV + 按配置降噪; 调用方负责 terminate()"""
+    chain = denoise_chain(cfg)
+    LOG.info("降噪链[%s]: %s", cfg.denoise_level, chain)
     return sp.Popen(
         ["ffmpeg", "-y", "-f", "avfoundation",
          "-i", cfg.ffmpeg_audio_device,
-         "-af", "highpass=f=80,lowpass=f=3800", "-ar", "16000", "-ac", "1", str(wav)],
+         "-af", chain, "-ar", "16000", "-ac", "1", str(wav)],
         stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
 # ---------------------------------------------------------------- 交互弹窗 ---
@@ -182,17 +220,25 @@ def policy_allow(cfg: Config, number: str) -> bool:
 # ---------------------------------------------------------------- 转写/摘要 --
 
 def transcribe(wav: Path, cfg: Config) -> str | None:
-    try:
-        import mlx_whisper  # 延迟导入: 未安装时留言仍可保存, 只跳过转写
-    except ImportError:
+    """调用 mlx_whisper CLI(pipx/pip 安装均可)。未安装时留言仍保存, 只跳过转写"""
+    exe = shutil.which("mlx_whisper") or str(Path.home() / ".local/bin/mlx_whisper")
+    if not Path(exe).exists():
         notify("未安装 mlx-whisper, 跳过转写(录音已保存)")
         return None
     LOG.info("转写中 (%s)…", cfg.whisper_model)
-    r = mlx_whisper.transcribe(str(wav), path_or_hf_repo=cfg.whisper_model)
-    text = (r.get("text") or "").strip()
-    out = BASE / "transcripts" / (wav.stem + ".txt")
-    out.write_text(text, encoding="utf-8")
-    return text
+    outdir = BASE / "transcripts"
+    outdir.mkdir(exist_ok=True)
+    r = sp.run([exe, str(wav), "--model", cfg.whisper_model,
+                "--output-dir", str(outdir), "--output-format", "txt",
+                "--initial-prompt", cfg.whisper_initial_prompt],
+               capture_output=True, text=True, timeout=3600)
+    txt_file = outdir / (wav.stem + ".txt")
+    if r.returncode != 0 or not txt_file.exists():
+        LOG.warning("转写失败: %s", (r.stderr or "")[-300:])
+        notify("转写失败, 录音已保存")
+        return None
+    text = txt_file.read_text(encoding="utf-8").strip()
+    return text or None
 
 SUMMARY_PROMPT = """你是电话留言整理助手。下面是一段打进来的留言的语音转写文本, 请只输出以下 Markdown:
 
@@ -223,6 +269,19 @@ def summarize(transcript: str, cfg: Config) -> str | None:
         LOG.warning("ollama 摘要失败: %s", e)
         notify("本地摘要失败, 转写文本已保存")
         return None
+
+def post_process(wav: Path, cfg: Config):
+    """录音 → 转写 → 摘要 → 落盘。供通话结束与 --process 共用"""
+    transcript = transcribe(wav, cfg)
+    summary = summarize(transcript or "", cfg)
+    if summary:
+        md = (f"# 留言摘要 · {wav.stem}\n\n{summary}\n\n---\n\n"
+              f"## 原始转写\n\n{transcript or '(无)'}\n")
+        (BASE / "summaries" / (wav.stem + ".md")).write_text(md, encoding="utf-8")
+        notify("留言摘要已生成, 见 summaries/")
+    elif transcript:
+        notify("转写已保存(摘要不可用), 见 transcripts/")
+    return transcript, summary
 
 # ---------------------------------------------------------------- 通话流程 ---
 
@@ -303,16 +362,7 @@ def run_session(cfg: Config, adb: Adb, number: str):
     rec.wait(timeout=10)
     LOG.info("录音结束: %.0f 秒", time.time() - start)
 
-    transcript = transcribe(wav, cfg)
-    summary = summarize(transcript or "", cfg)
-
-    if summary:
-        md = (f"# 留言摘要 · {ts} · {number or '未知号码'}\n\n"
-              f"{summary}\n\n---\n\n## 原始转写\n\n{transcript or '(无)'}\n")
-        (BASE / "summaries" / f"{stem}.md").write_text(md, encoding="utf-8")
-        notify("留言摘要已生成, 见 summaries/")
-    elif transcript:
-        notify("转写已保存(摘要不可用), 见 transcripts/")
+    post_process(wav, cfg)
 
 # ---------------------------------------------------------------- 自检 -------
 
@@ -334,10 +384,11 @@ def cmd_check(cfg: Config, adb: Adb) -> int:
     r = sp.run(["ffmpeg", "-version"], capture_output=True)
     step("ffmpeg 已安装", r.returncode == 0, "brew install ffmpeg")
     try:
-        import mlx_whisper  # noqa: F401
-        step("mlx-whisper 可导入", True)
-    except ImportError:
-        step("mlx-whisper 可导入", False, "pipx install mlx-whisper (可选, 缺失时只保存录音)")
+        exe = shutil.which("mlx_whisper") or str(Path.home() / ".local/bin/mlx_whisper")
+        ok = Path(exe).exists()
+    except Exception:
+        ok = False
+    step("mlx-whisper CLI 可用", ok, "pipx install mlx-whisper (缺失时只保存录音, 不转写)")
     try:
         with urllib.request.urlopen(cfg.ollama_url.replace("/api/generate", "/api/tags"), timeout=5):
             step("ollama 服务在线", True)
@@ -353,6 +404,19 @@ def cmd_list_devices():
         if "AVFoundation" in line or "audio" in line.lower() or "video" in line.lower():
             print(line)
     print("\n在 config.json 的 ffmpeg_audio_device 中填 \":<音频设备号>\"")
+
+def cmd_process(cfg: Config, wav_path: str):
+    """对已有录音手动执行 转写+摘要(终端打印结果, 同时落盘)"""
+    wav = Path(wav_path).expanduser()
+    if not wav.exists():
+        print(f"❌ 文件不存在: {wav}"); return 1
+    print(f"处理: {wav.name} (转写模型 {cfg.whisper_model}, 首次运行会下载模型)…")
+    transcript, summary = post_process(wav, cfg)
+    print("\n===== 转写 =====")
+    print(transcript or "(无转写结果)")
+    print("\n===== 摘要 =====")
+    print(summary or "(摘要不可用, 检查 ollama)")
+    return 0
 
 def cmd_record_test(cfg: Config, seconds: int):
     """录音通道标定: 对着手机听筒位置发声, 检查 Mac 录到的电平是否足够"""
@@ -404,6 +468,7 @@ def main():
     ap.add_argument("--list-devices", action="store_true", help="列出录音设备")
     ap.add_argument("--record-test", metavar="SEC", nargs="?", const=5, type=int,
                     help="录音通道标定 N 秒(默认 5), 对听筒发声看电平")
+    ap.add_argument("--process", metavar="WAV", help="对已有录音执行 转写+摘要")
     ap.add_argument("--once", action="store_true", help="打印一次通话状态(调试)")
     args = ap.parse_args()
 
@@ -414,6 +479,8 @@ def main():
         return cmd_list_devices()
     if args.record_test:
         return cmd_record_test(cfg, args.record_test)
+    if args.process:
+        return cmd_process(cfg, args.process)
     if args.once:
         print(f"mCallState={adb.call_state()} (0=idle 1=ringing 2=offhook), "
               f"号码={adb.incoming_number() or '(空)'}")
