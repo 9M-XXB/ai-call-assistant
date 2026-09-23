@@ -1,0 +1,19 @@
+# 隐私文件——任何语音、日志、个人配置不入库
+recordings/
+transcripts/
+summaries/
+logs/
+greetings/
+config.json
+
+# 音频文件一律不入库
+*.wav
+*.aiff
+*.mp3
+*.m4a
+*.flac
+
+# 系统与临时文件
+__pycache__/
+*.pyc
+.DS_Store

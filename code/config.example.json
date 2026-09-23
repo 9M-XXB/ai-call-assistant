@@ -1,0 +1,15 @@
+{
+  "adb_path": "adb",
+  "auto_delay_sec": 10,
+  "max_record_sec": 180,
+  "answer_mode": "all",
+  "whitelist": [],
+  "blocklist": [],
+  "active_hours": null,
+  "greeting_file": "greetings/zh-CN.wav",
+  "beep": true,
+  "ffmpeg_audio_device": ":0",
+  "whisper_model": "mlx-community/whisper-medium-mlx",
+  "ollama_model": "qwen2.5:7b-instruct-q4_K_M",
+  "ollama_url": "http://127.0.0.1:11434/api/generate"
+}
