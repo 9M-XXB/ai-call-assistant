@@ -6,7 +6,7 @@ AI来电助手 · Mac + ADB 无 App 架构
 数据流:
   iPhone... 不, 一加A机(USB) --adb--> 本程序(Mac)
   响铃检测(dumpsys telephony.registry) → 策略判断 → 10s 自动接听(KEYCODE_HEADSETHOOK)
-  → afplay 播放 greeting → (提示音) → ffmpeg 录音(半双工, 通话结束即停)
+  → afplay 播放 greeting(音量自动固定/恢复) → (提示音) → ffmpeg 录音(半双工, 通话结束即停)
   → mlx-whisper 本地转写 → ollama 本地 LLM 摘要 → transcripts/ summaries/
 
 用法:
@@ -51,6 +51,7 @@ DEFAULTS = {
     "active_hours": None,          # null=全天; 或 {"start":"22:00","end":"08:00"} 可跨午夜
     "greeting_file": "greetings/zh-CN.wav",
     "beep": True,                  # greeting 播完后播放系统提示音再开始录音
+    "mac_output_volume": 70,       # 通话前把 Mac 输出音量固定到该值(0-100)并解除静音, 通话后恢复原状; null=不调整
     "ffmpeg_audio_device": ":0",   # 用 --list-devices 查询后填写
     "whisper_model": "mlx-community/whisper-medium-mlx",
     "whisper_initial_prompt": "以下是普通话的句子。",   # 偏置简体中文; 多语言场景可置空
@@ -136,6 +137,20 @@ def play(path: Path):
     r = sp.run(["afplay", str(path)])
     if r.returncode != 0:
         raise RuntimeError(f"afplay 播放失败: {path}")
+
+def get_volume_settings() -> tuple[int, bool]:
+    """读 Mac 输出音量(0-100)与静音状态, 供通话结束后恢复"""
+    r = sp.run(["osascript", "-e", "get volume settings"],
+               capture_output=True, text=True, timeout=5)
+    m = re.search(r"output volume:(\d+)", r.stdout or "")
+    if not m:
+        raise RuntimeError(f"osascript 读取音量失败: {(r.stderr or '')[:120]}")
+    return int(m.group(1)), "output muted:true" in r.stdout
+
+def set_output_volume(vol: int, muted: bool = False):
+    sp.run(["osascript", "-e",
+            f"set volume output volume {int(vol)} output muted {'true' if muted else 'false'}"],
+           capture_output=True, timeout=5)
 
 def ensure_rnn_model(cfg: Config) -> str | None:
     """RNNoise 模型: 本地有就用, 没有联网下载一次; 失败返回 None(回退 fft 降噪)"""
@@ -341,26 +356,45 @@ def run_session(cfg: Config, adb: Adb, number: str):
             adb._run("shell", "input", "keyevent", "24")    # VOLUME_UP → 通话流
         LOG.info("通话音量已拉满 (%d 次 VOLUME_UP)", keys)
 
-    if cfg.beep:
-        play(Path("/System/Library/Sounds/Ping.aiff"))          # 经典留言"叮"
-    LOG.info("播放 greeting: %s", cfg.greeting_file)
-    play(BASE / cfg.greeting_file)                              # 期间不录音 → 免回声消除
+    # greeting 走 Mac 扬声器: 通话前把输出音量固定到配置值并解除静音, 结束后恢复原状
+    saved_audio = None
+    if cfg.mac_output_volume is not None:
+        try:
+            saved_audio = get_volume_settings()
+            set_output_volume(int(cfg.mac_output_volume))
+            LOG.info("Mac 输出音量 %d%% → %d%% (通话结束后恢复)",
+                     saved_audio[0], int(cfg.mac_output_volume))
+        except Exception as e:
+            LOG.warning("Mac 音量调整失败, 以当前音量播放 greeting: %s", e)
 
-    notify("请在提示音后留言")
-    rec = start_recording(cfg, wav)
-    LOG.info("录音开始: %s", wav.name)
-    start = time.time()
-    while time.time() - start < cfg.max_record_sec:
-        if adb.call_state() != 2:                               # 对方挂断
-            break
-        time.sleep(1)
-    else:
-        LOG.info("达到最长录音时长, 主动挂断")
-        adb.hangup()
-    time.sleep(0.5)
-    rec.terminate()
-    rec.wait(timeout=10)
-    LOG.info("录音结束: %.0f 秒", time.time() - start)
+    try:
+        if cfg.beep:
+            play(Path("/System/Library/Sounds/Ping.aiff"))          # 经典留言"叮"
+        LOG.info("播放 greeting: %s", cfg.greeting_file)
+        play(BASE / cfg.greeting_file)                              # 期间不录音 → 免回声消除
+
+        notify("请在提示音后留言")
+        rec = start_recording(cfg, wav)
+        LOG.info("录音开始: %s", wav.name)
+        start = time.time()
+        while time.time() - start < cfg.max_record_sec:
+            if adb.call_state() != 2:                               # 对方挂断
+                break
+            time.sleep(1)
+        else:
+            LOG.info("达到最长录音时长, 主动挂断")
+            adb.hangup()
+        time.sleep(0.5)
+        rec.terminate()
+        rec.wait(timeout=10)
+        LOG.info("录音结束: %.0f 秒", time.time() - start)
+    finally:
+        if saved_audio is not None:
+            try:
+                set_output_volume(*saved_audio)
+                LOG.info("Mac 输出音量已恢复: %d%%", saved_audio[0])
+            except Exception as e:
+                LOG.warning("恢复 Mac 音量失败: %s", e)
 
     post_process(wav, cfg)
 
@@ -383,6 +417,11 @@ def cmd_check(cfg: Config, adb: Adb) -> int:
     step(f"greeting 文件存在 ({cfg.greeting_file})", g.exists(), "放入 greetings/ 或改配置")
     r = sp.run(["ffmpeg", "-version"], capture_output=True)
     step("ffmpeg 已安装", r.returncode == 0, "brew install ffmpeg")
+    try:
+        vol, muted = get_volume_settings()
+        step(f"Mac 输出音量可控 (当前 {vol}%, {'静音中' if muted else '未静音'})", True)
+    except Exception as e:
+        step("Mac 输出音量可控", False, str(e))
     try:
         exe = shutil.which("mlx_whisper") or str(Path.home() / ".local/bin/mlx_whisper")
         ok = Path(exe).exists()

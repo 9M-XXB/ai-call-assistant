@@ -8,6 +8,7 @@
   "active_hours": null,
   "greeting_file": "greetings/zh-CN.wav",
   "beep": true,
+  "mac_output_volume": 70,
   "ffmpeg_audio_device": ":0",
   "whisper_model": "mlx-community/whisper-medium-mlx",
   "ollama_model": "qwen2.5:7b-instruct-q4_K_M",

@@ -70,6 +70,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 | `active_hours` | `null` | `null`=全天；`{"start":"22:00","end":"08:00"}` 支持跨午夜 |
 | `greeting_file` | `greetings/zh-CN.wav` | 相对 `code/` 的路径；多语言多存几份换着用 |
 | `beep` | `true` | greeting 后播放系统"叮"提示音再录音 |
+| `mac_output_volume` | `70` | 每次通话前把 Mac 输出音量固定到该值（0–100）并解除静音，通话结束后**恢复原状**；`null` 禁用。防止 Mac 恰好静音/音量过低导致对方听不到 greeting |
 | `ffmpeg_audio_device` | `":0"` | AVFoundation 音频设备号（`--list-devices` 查询） |
 | `whisper_model` | `mlx-community/whisper-medium-mlx` | HuggingFace 上的 mlx 模型仓；首次运行自动下载 |
 | `whisper_initial_prompt` | `"以下是普通话的句子。"` | Whisper 初始提示，偏置输出简体中文；多语言场景可置空 `""` |
@@ -81,7 +82,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 
 | 命令 | 用途 |
 |---|---|
-| `python3 assistant.py --check` | 自检：adb/连接/greeting/ffmpeg/whisper/ollama 六项 |
+| `python3 assistant.py --check` | 自检：adb/连接/greeting/ffmpeg/音量控制/whisper/ollama 七项 |
 | `python3 assistant.py --list-devices` | 列出 AVFoundation 录音设备，填配置 |
 | `python3 assistant.py --record-test 6` | **录音通道标定**：倒计时后录 6 秒，此期间对着手机听筒缝弹指/说话，输出 mean/max 音量并给出合格判定（max ≥ -20dB 为合格） |
 | `python3 assistant.py --process WAV` | 对已有录音手动执行 **转写 + 摘要**（终端打印结果并落盘），也是验证转写/摘要依赖的工具 |
@@ -117,6 +118,7 @@ python3 assistant.py                  # 常驻运行（建议 tmux 或 launchd�
 
 - **人在电脑旁**：来电时 Mac 弹窗（含"接听"按钮）——点"接听"立即人工接起，**本通不录留言**；什么都不点则 10 秒后自动接听并进入留言流程；10 秒内在手机上自己接也安全，脚本检测到 offhook 自动让路。
 - **人不在**：自动接听 → greeting → 提示音 → 对方留言（最长 180 秒，超时脚本挂断）→ 挂断后本地转写 + 摘要 → Mac 通知。
+- **Mac 音量自动化**：接通后、播放 greeting 前记录当前输出音量并固定为 `mac_output_volume`（默认 70%）且解除静音，录音结束后立即恢复原状；调整失败则以当前音量继续，不阻塞通话。
 - 产物：`recordings/*.wav`（16kHz 单声道，约 2MB/分钟）、`transcripts/*.txt`、`summaries/*.md`（含元信息+摘要+原始转写）、`logs/assistant.log`。
 
 ## 7. 已知限制与扩展点
@@ -170,7 +172,7 @@ brew install tmux && tmux new -d -s aicall 'python3 ~/.../code/assistant.py'
 |---|---|
 | `--check` 提示手机未连接 | 换数据线（纯充电线是头号原因）→ 换 USB 口 → 插拔触发授权弹窗 |
 | 响铃但不自动接 | `--once` 看 mCallState 是否为 1；手动 `adb shell input keyevent 85` 验证；无效则开「USB 调试（安全设置）」 |
-| 对方说 greeting 声音小 | Mac 输出音量调高、手机挪近扬声器、确认没人动过摆放 |
+| 对方说 greeting 声音小 | 输出音量已由脚本自动固定（`mac_output_volume`，默认 70%）——若仍小就调高该值，或把手机挪近扬声器 |
 | 录音文件是空的/无声 | 系统设置→隐私→麦克风→勾选终端；ffmpeg 设备号是否选对 |
 | **录音全是 -91dB 数字静音** | **macOS 麦克风权限未授予运行服务的 App（终端）**——系统不报错只返回静音。命令行子进程不触发弹窗，必须手动授权：服务在哪个终端跑，就授权哪个终端 App。验证：`ffmpeg -i 录音 -af volumedetect -f null -` 看 max_volume |
 | 录音 max 触顶 0.0dB（削波） | 麦克风增益太高：调低 Yeti 的 GAIN 或拉远距离，目标 max 在 -12 ~ -3dB |
