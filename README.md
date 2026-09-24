@@ -1,5 +1,7 @@
 # AI来电助手（OPPO 系列手机 + MacBook 特化版）
 
+中文 | [English](README.en.md)
+
 > **本项目由 ZCode（编码智能体，模型 GLM-5.3-Flash）创建与调试。**
 
 来电响铃 10 秒无人接听时自动接起，向对方播放自定义的多语言问候语（含录音告知），请对方留言并录音，挂断后在本地完成语音转写与 AI 摘要。**全程不依赖运营商语音信箱，手机端零安装**（只靠 USB + ADB）。
@@ -50,12 +52,13 @@
 
 ![实际部署：MacBook Air + Blue Yeti（悬臂防震架）+ 平放的一加手机](assets/setup.jpg)
 
-图中：**MacBook Air** 运行 `assistant.py`（USB 线经扩展坞连接手机，同时供电 + ADB）；**Blue Yeti** 装在悬臂防震架上，拾音面对准平放的**一加手机**的顶部听筒缝（录音通道）；手机底边（麦克风）朝向 MacBook 扬声器一侧（问候语通道）。外接显示器上的系统监视器用于观察转写/摘要时的 CPU 占用。
+图中：**MacBook Air** 运行 `assistant.py`（USB 线经扩展坞连接手机，同时供电 + ADB）；**Blue Yeti** 装在悬臂防震架上，拾音面对准平放的**一加手机**的顶部听筒缝（录音通道）；手机底边（麦克风）朝向 MacBook 扬声器一侧（问候语通道）。
 
 ## 仓库结构
 
 ```
-├── README.md            # 本文件
+├── README.md            # 本文件（中文）
+├── README.en.md         # English version
 └── code/
     ├── assistant.py         # 主程序（单文件，Python ≥3.9）
     ├── config.example.json  # 配置样例
