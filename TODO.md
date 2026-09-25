@@ -64,3 +64,50 @@ silent switch on), ultimately replacing the acoustic coupling with a direct
 digital audio path into/out of the call stream.
 
 </details>
+
+---
+
+## 3. ⭐ 最终目标：通用化——手机装一个 App 就是完全体
+
+**目标**：把整套能力收进**一个普通安卓 App**：手机只需安装这一个 App（不需要电脑、不需要第二台设备、
+不限手机型号），即获得**完全体功能**——包括当前已实现的部分（响铃监测、10 秒延时自动接听、
+自定义多语言问候语、留言录音、本地转写 + AI 摘要），以及 TODO 1/2 的全部能力（分析/回话/多轮对话、
+风格预设、完全静音可用）。
+
+**现状与差距**：当前是"Mac + 数据线 + 声学耦合"的双机特化方案；通用化要在 App 内部重建
+感知（来电监测）、执行（接听/挂断/音量）、音频（问候出口 + 留言入口）三条链路。
+
+**拆解（分级路线）**：
+
+**A. 普通 App 可达的完全体（公开 API，任何 Android 9+ 手机）**
+
+- [ ] 自动接听：`InCallService`（成为默认电话应用，最稳）或 `ANSWER_PHONE_CALLS` 运行时权限 + `acceptRingingCall()`——替代 ADB keyevent
+- [ ] 来电监测与策略：`CallScreeningService` + `TelecomManager`；白/黑名单、时段策略沿用现有设计
+- [ ] 单机音频回路（替代跨设备声学耦合）：接通后经 `InCallService.setAudioRoute()` 切免提，TTS 问候语走"扬声器 → 麦克风"回路播入通话；同一路径录对方留言
+- [ ] 端侧 AI 全家桶：whisper.cpp / sherpa-onnx（ASR）+ MediaPipe LLM Inference / llama.cpp 小模型（对话决策 + 摘要）+ 端侧 TTS，全离线
+- [ ] 风格预设与音量自主权：App 内经 `AudioManager` 直接管理铃声/通话各音频流，静音开关不再影响链路
+- 已知天花板：免提回路音质有限；第三方 App 仍拿不到通话流的**数字**音频（`CAPTURE_AUDIO_OUTPUT` 为 signature 级，Android 设计如此）
+
+**B. 数字链路完全体（需特权，与 TODO 2 汇合）**
+
+- [ ] root/Magisk 模块或系统签名，打通通话流的数字注入/截取，音质与可靠性不再受声学限制
+- [ ] 或：与 OEM 合作/随 ROM 定制的系统级"来电秘书"（Pixel Call Screen、Bixby 智能接听即此类）
+
+**C. 备选架构（记录用，不作为目标）**
+
+- [ ] 云托管代接：运营商呼叫转移 → 云端语音机器人。彻底摆脱机型与本地算力，但重新引入运营商/云端依赖与隐私取舍——与"手机上自足"的初衷相悖，仅作对照
+
+<details open>
+<summary><strong>English summary</strong></summary>
+
+Ultimate goal — generalization: a single ordinary Android app delivers the
+complete feature set (everything already working, plus TODO 1–2) on any phone
+model with no computer involved. Phase A reaches this within public APIs
+(`InCallService` auto-answer, speakerphone loopback for greeting & recording,
+fully on-device ASR/LLM/TTS, in-app audio-stream control); Phase B reaches the
+fully digital call-audio path via privileged access (root/system signature, or
+OEM-level integration); a cloud-hosted call-forwarding variant is recorded
+only as a contrasting alternative, since it reintroduces carrier/cloud
+dependency.
+
+</details>

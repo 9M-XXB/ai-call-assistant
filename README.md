@@ -59,7 +59,7 @@
 ```
 ├── README.md            # 本文件（中文）
 ├── README.en.md         # English version
-├── TODO.md              # 路线图：对话能力升级 + 手机高权限静音可用（双语）
+├── TODO.md              # 路线图：对话能力升级 + 手机高权限静音可用 + ⭐通用化单App完全体（双语）
 └── code/
     ├── assistant.py         # 主程序（单文件，Python ≥3.9）
     ├── config.example.json  # 配置样例
