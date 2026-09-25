@@ -22,6 +22,7 @@ __pycache__/
 可行性分析.md
 部署方案.md
 电脑方案详解.md
+通用化调研.md
 
 # RNNoise 模型——代码自动下载, 不入库
 models/
