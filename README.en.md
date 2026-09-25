@@ -60,6 +60,7 @@ In the photo: the **MacBook Air** runs `assistant.py` (a USB cable through a hub
 ```
 ├── README.md            # Chinese readme
 ├── README.en.md         # This file
+├── TODO.md              # Roadmap: conversational upgrade + deep phone-OS privileges for fully-muted operation (bilingual)
 └── code/
     ├── assistant.py         # Main program (single file, Python ≥3.9)
     ├── config.example.json  # Sample configuration
