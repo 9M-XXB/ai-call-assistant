@@ -1,33 +1,81 @@
-# AI Call Assistant (Specialized for OPPO-series phones + MacBook)
+# AI Call Assistant (specialized for OPPO-series phones + MacBook) · Scope Document
 
 [中文](README.md) | English
 
 > **This project was created and debugged by ZCode (coding agent, model GLM-5.3-Flash).**
+> This README follows the Project Scope Document template (projectmanagementformula.com, 9 sections), restructured 2026-10-06; engineering entry points (quick start / repository structure / privacy) are kept as appendices. English version synced 2026-10-31.
 
-When an incoming call goes unanswered for 10 seconds, it is automatically picked up. A customizable multi-language greeting (including a recording notice) is played to the caller, who is invited to leave a message that gets recorded. After hang-up, transcription and AI summarization run entirely on your machine. **Never relies on carrier voicemail; zero installation on the phone** (USB + ADB only).
+## 1. Project Information
 
-> **⚠️ Scope note**: this project is a specialized pipeline for **OPPO-series phones (incl. OnePlus, ColorOS/OxygenOS) + MacBook laptops (Apple Silicon)**.
-> - Auto-answer relies on ADB `input keyevent`, verified on a **OnePlus Ace 5 Ultra (ColorOS 15)**; other OPPO/OnePlus models need their own verification;
-> - It depends on ColorOS's "USB debugging (Security settings)" toggle to simulate key presses — other systems have no equivalent;
-> - The audio chain (speaker/mic placement, level calibration, Blue Yeti microphone) was built on a **MacBook Air**;
-> - Other phone brands or Windows/Linux computers can adapt the architecture; the core limitation (Android does not expose the call audio stream) is universal.
-
-## Software versions (verified combination, tested 2026-09-22)
-
-| Component | Verified version |
+| Item | Content |
 |---|---|
-| macOS (MacBook Air) | **26.6.2** (Build 25G83) |
-| ColorOS (OnePlus Ace 5 Ultra, PLC110) | **V16.1.0** (Android 16, build `PLC110_16.0.10.500(CN01)`) |
-| O+ Connect (optional) | Mac **16.2.10** / phone **16.25.6** (`com.oplus.linker`) |
-| Python | 3.14 (mlx-whisper runs on 3.14.7) |
-| adb | 37.0.1 (homebrew android-platform-tools) |
-| ffmpeg | 9.0.2 (requires the `afftdn` / `arnndn` / `speechnorm` filters) |
-| Transcription | mlx-whisper 0.4.3 + `mlx-community/whisper-medium-mlx` |
-| Summarization | ollama + `qwen2.5:7b-instruct-q4_K_M` (4.7 GB) |
+| Project name | AI Call Assistant — away-mode auto-answer + message taking + local AI summary |
+| Author | The author (project owner) |
+| Created & debugged by | ZCode (GLM-5.3-Flash) |
+| Started | 2026-09-12 (feasibility analysis) |
+| Document version | v2.0 (Scope Document restructure) |
+| Last updated | 2026-10-31 |
 
-> Version-sensitive points: the location of ColorOS's "USB debugging (Security settings)" toggle; the field format of `dumpsys telephony.registry`; macOS's per-app microphone permission for terminal apps (macOS returns silence instead of an error). O+ Connect is only used for screen mirroring and manual takeover — it is optional and not required for auto-answering.
+## 2. Overview
 
-## How it works
+**Problem**: calls go unanswered when you're away and messages are lost; carrier voicemail is a poor experience and carrier-dependent. **Solution**: a laptop (MacBook) + one Android phone (USB + ADB only, zero installation on the phone) form an "AI secretary" — when a call rings unanswered for 10 seconds it is answered automatically, a customizable multilingual greeting (including a recording notice) is played, the caller's message is recorded, and after hang-up transcription (mlx-whisper) and AI summarization (ollama) run entirely locally. **No cloud dependency end to end.** **Success measure**: the full pipeline has been verified on real hardware (achieved 2026-09-22 on a OnePlus Ace 5 Ultra + MacBook Air).
+
+## 3. In-Scope Deliverables
+
+| Deliverable | Description | Acceptance | Status |
+|---|---|---|---|
+| `code/assistant.py` state machine | Ring detection → policy → 10 s auto-answer → greeting → beep → recording → hang-up → transcribe → summarize | Full pipeline verified on real hardware | ✔ 2026-09-22 |
+| Mac output volume management | Save current volume before the call → set 70% and unmute → restore in `finally` | Get/set round-trip verified (once caught the Mac at 0%/muted, proving the need) | ✔ 2026-09-22 |
+| Local transcription + summary pipeline | mlx-whisper medium + ollama qwen2.5-7B-instruct | Installed and tested | ✔ 2026-09-22 |
+| Recording SNR optimization | RNNoise neural denoise + 80–3800 Hz band-pass + placement tuning | Ongoing improvement | In progress |
+| Conversation upgrade (TODO 1) | Analyze → reply → multi-turn dialogue; persona presets (probing / minimal) | Turn-wise transcription, TTS outlet, dialogue policy, style switching usable | Planned |
+| Fully-muted usability with elevated phone privileges (TODO 2) | ADB enhancements → Shizuku → root/Magisk digital path | Full pipeline with the phone completely muted, zero intervention | Planned |
+| ⭐Universal one-app full experience (TODO 3) | One ordinary Android app carrying everything (route A public APIs / B privileged digital path / C cloud-hosted contrast) | Any Android 9+ phone works with no computer | Planned |
+
+## 4. Out of Scope
+
+- Cloud-hosted call answering (carrier call forwarding → cloud robot): recorded only as the contrast for TODO 3, not a goal;
+- Adaptation to non-OPPO/OnePlus models and other brands (the architecture carries over; the core limitation is universal);
+- Windows/Linux host support;
+- Any audio/text leaving the machine — recordings and summaries never touch the cloud.
+
+## 5. Assumptions
+
+- The phone stays USB-connected with ADB authorization (also charging);
+- ColorOS's "USB debugging (Security settings)" toggle stays on (a prerequisite for simulated key presses);
+- macOS has granted microphone permission to the terminal app (note: without it macOS returns silence instead of an error);
+- Local models are good enough: mlx-whisper medium transcription + qwen2.5-7B summarization suffice for personal use.
+
+## 6. Constraints
+
+- **Android does not expose the call audio stream** (`CAPTURE_AUDIO_OUTPUT` is signature-level, by design) — third parties only get the "speaker → microphone" acoustic coupling; this is the project's most fundamental constraint;
+- Depends on the ColorOS-specific toggle and `dumpsys telephony.registry` field formats (version-sensitive, see below);
+- The acoustic chain is limited by physical placement (earpiece slit to mic, bottom mic to Mac speakers);
+- Verified version combination (2026-09-22): macOS 26.6.2 / ColorOS V16.1.0 (OnePlus Ace 5 Ultra PLC110) / Python 3.14 / adb 37.0.1 / ffmpeg 9.0.2 / mlx-whisper 0.4.3 / ollama qwen2.5:7b-instruct-q4_K_M; O+ Connect 16.2.10/16.25.6 (optional, screen mirroring only).
+
+## 7. Success Criteria
+
+- An incoming call is detected and auto-answered within ≤10 s of ringing, with the "message will be recorded" notice in the greeting;
+- The message recording can be transcribed and summarized into readable text, with zero cloud dependency;
+- (after TODO 2) the full pipeline runs unattended with the phone completely muted;
+- (after TODO 3) any Android 9+ phone gains all of the above by installing a single app.
+
+## 8. Change Control
+
+- The repo is managed in git: scope changes are recorded via commits and [TODO.md](TODO.md) checkboxes;
+- Major architecture pivots (e.g. the TODO 3 route A/B/C choice) update the local *Generalization Research* doc first, then code;
+- Research corrections are logged in-document (e.g. the retraction of the non-existent `CAPTURE_TELECOM` permission).
+
+## 9. Approvals
+
+| Role | Person/Tool | Date |
+|---|---|---|
+| Author | The project owner (unsigned) | — |
+| Research & implementation | ZCode (GLM-5.3-Flash) | 2026-10-06 |
+
+---
+
+## Appendix A: How it works
 
 ```
 OnePlus phone (USB/adb)                 MacBook Air
@@ -42,36 +90,13 @@ OnePlus phone (USB/adb)                 MacBook Air
                                       └───────────────────────────────────┘
 ```
 
-Key design points:
+Key design: half-duplex recording (recording starts only after the greeting finishes — no echo cancellation needed); after answering, "volume up" is pressed repeatedly to maximize call volume; recordings are band-passed 80–3800 Hz in real time; transcription and summarization are fully local.
 
-- **Half-duplex recording**: recording starts only after the greeting finishes playing, which eliminates the need for echo cancellation by construction;
-- **Call volume auto-maximized**: after answering, "volume up" is pressed repeatedly so the earpiece output is loud enough for the recording channel to pick up;
-- **Voice-band filtering**: recordings are band-passed 80–3800 Hz in real time to suppress low-frequency rumble and high-frequency hiss;
-- **Local-first**: transcription (mlx-whisper) and summarization (ollama) run entirely on the machine — no cloud dependency.
-
-## Real deployment
+## Appendix B: Real deployment
 
 ![Setup: MacBook Air + Blue Yeti (boom arm, shock mount) + a flat-laid OnePlus phone](assets/setup.jpg)
 
-In the photo: the **MacBook Air** runs `assistant.py` (a USB cable through a hub connects the phone, providing both power and ADB); the **Blue Yeti** sits on a boom arm with a shock mount, its pickup facing the earpiece slit at the top of the flat-laid **OnePlus phone** (recording channel); the phone's bottom edge (microphone) points toward the MacBook speakers (greeting channel).
-
-## Repository layout
-
-```
-├── README.md            # Chinese readme
-├── README.en.md         # This file
-├── TODO.md              # Roadmap: conversational upgrade + deep phone-OS privileges + ⭐ultimate goal: one-app full experience on any phone (bilingual)
-└── code/
-    ├── assistant.py         # Main program (single file, Python ≥3.9)
-    ├── config.example.json  # Sample configuration
-    └── README.md            # Install, config, commands, troubleshooting (code docs, Chinese)
-```
-
-> Design research and deployment documents (feasibility analysis / deployment plan / computer-based walkthrough) are kept locally only and are not committed.
-
-## Quick start
-
-Full steps in [code/README.md](code/README.md) (Chinese). In short:
+## Appendix C: Quick start (details in [code/README.md](code/README.md), Chinese)
 
 ```bash
 brew install --cask android-platform-tools ffmpeg
@@ -84,18 +109,11 @@ python3 code/assistant.py --record-test  # recording-channel calibration
 python3 code/assistant.py                # run persistently
 ```
 
-## Privacy
+## Appendix D: Repository structure & privacy
 
-This repository contains **no** call recordings, logs, greeting audio, or personal configuration (see `.gitignore`):
+```
+├── README.md / README.en.md / TODO.md
+└── code/  assistant.py · config.example.json · README.md
+```
 
-- `recordings/ transcripts/ summaries/ logs/` — produced at runtime, contain personal call content;
-- `greetings/` — greeting audio, contains personal information (e.g. time zone / call-back hours); generate it locally per the code README;
-- `config.json` — personal configuration; copy from `config.example.json` on first use.
-
-Recording notice: the greeting text includes a "your message will be recorded" notice; recordings and summaries are stored locally only.
-
-## Goal & status
-
-**Goal**: a laptop + one Android phone forming an "AI secretary" that automatically answers calls while you're away, plays a greeting, collects messages, and produces summaries.
-
-**Status** (2026-09-22): the full single-machine pipeline has been verified on real hardware (OnePlus Ace 5 Ultra + MacBook Air + Blue Yeti) — call detection, 10-second auto-answer, greeting playback and message recording all work; **transcription (mlx-whisper medium) and local summarization (ollama + qwen2.5-7B) are installed and tested end-to-end**; recording SNR keeps improving through RNNoise neural denoising and placement tuning.
+This repository contains **no** call recordings, logs, greeting audio, or personal configuration (`recordings/ transcripts/ summaries/ logs/ greetings/ config.json` are all excluded); the recording notice is embedded in the greeting text, and recordings and summaries are stored locally only. Design research documents (feasibility analysis / deployment plan / computer-based walkthrough / generalization research / on-device & carried-device routes / Android variants & self-built OS research) are kept locally only and are not committed.
