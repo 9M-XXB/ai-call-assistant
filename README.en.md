@@ -2,6 +2,16 @@
 
 [中文](README.md) | English
 
+> ## ⚠️ Project status: development paused (since 2026-11-13)
+>
+> **Why — the core difficulties and unrealistic parts of the "one-device plan"**: the project's end goal was "one ordinary phone + one app = the full experience" (auto-answer, speaking the greeting into the call, recording the caller, on-device AI summary — fully offline). After several rounds of research, the conclusion is that this cannot become a realistic, production-grade product:
+>
+> 1. **Call audio is system-level off-limits**: Android reserves digital access to the call stream (`CAPTURE_AUDIO_OUTPUT`, a signature-level permission) for system apps, and offers no public API to inject audio into the call's uplink either — third parties are left with only the "speakerphone → microphone" acoustic loopback, which has hard ceilings on audio quality, echo, ambient noise and over-hearing privacy. This is by OS design and has stayed closed for years.
+> 2. **The correct form is monopolized by system-level products**: Pixel Call Screen, Samsung Bixby Text Call and Xiaomi 小爱通话 all implement the same "answer + transcribe + summarize" as system apps with digital-path quality, while Google keeps tightening third-party options (the 2022 Play policy banning third-party call recording, the 2026 accessibility crackdown) — squeezing third parties from both the experience side and the policy side.
+> 3. **All three bypass routes are unrealistic**: privileged paths (root/Magisk/system signing) lose warranty and shatter with every ROM update; cloud-hosted answering sounds best but betrays this project's fundamental premise that audio never leaves the device; building a custom Android ROM is technically feasible (privileged permissions could be self-granted, the audio HAL could be modified), but the entry ticket is an unlockable-bootloader device (mainstream vendors are closing unlock channels — recent OPPO/Xiaomi models are effectively locked) plus per-SoC audio HAL engineering, far beyond what an individual project can sustain.
+>
+> The repository keeps the verified **two-device stationary rig** (Mac + phone acoustic coupling, validated on real hardware 2026-09-22) as a personal tool; the "universal one-app full experience" goal (TODO 3) is paused. See the TODO file and the scope document below.
+
 > **This project was created and debugged by ZCode (coding agent, model GLM-5.3-Flash).**
 > This README follows the Project Scope Document template (projectmanagementformula.com, 9 sections), restructured 2026-10-06; engineering entry points (quick start / repository structure / privacy) are kept as appendices. English version synced 2026-10-31.
 
@@ -13,8 +23,8 @@
 | Author | The author (project owner) |
 | Created & debugged by | ZCode (GLM-5.3-Flash) |
 | Started | 2026-09-12 (feasibility analysis) |
-| Document version | v2.0 (Scope Document restructure) |
-| Last updated | 2026-10-31 |
+| Document version | v2.1 (Scope Document restructure + paused-development notice) |
+| Last updated | 2026-11-13 (marked as paused, with the one-device-plan rationale) |
 
 ## 2. Overview
 
