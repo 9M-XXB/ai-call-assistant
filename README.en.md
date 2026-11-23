@@ -38,9 +38,9 @@
 | Mac output volume management | Save current volume before the call → set 70% and unmute → restore in `finally` | Get/set round-trip verified (once caught the Mac at 0%/muted, proving the need) | ✔ 2026-09-22 |
 | Local transcription + summary pipeline | mlx-whisper medium + ollama qwen2.5-7B-instruct | Installed and tested | ✔ 2026-09-22 |
 | Recording SNR optimization | RNNoise neural denoise + 80–3800 Hz band-pass + placement tuning | Ongoing improvement | In progress |
-| Conversation upgrade (TODO 1) | Analyze → reply → multi-turn dialogue; persona presets (probing / minimal) | Turn-wise transcription, TTS outlet, dialogue policy, style switching usable | Planned |
-| Fully-muted usability with elevated phone privileges (TODO 2) | ADB enhancements → Shizuku → root/Magisk digital path | Full pipeline with the phone completely muted, zero intervention | Planned |
-| ⭐Universal one-app full experience (TODO 3) | One ordinary Android app carrying everything (route A public APIs / B privileged digital path / C cloud-hosted contrast) | Any Android 9+ phone works with no computer | Planned |
+| Conversation upgrade (TODO 1) | Analyze → reply → multi-turn dialogue; persona presets (probing / minimal) | Turn-wise transcription, TTS outlet, dialogue policy, style switching usable | Paused (with the project, 2026-11-13) |
+| Fully-muted usability with elevated phone privileges (TODO 2) | ADB enhancements → Shizuku → root/Magisk digital path | Full pipeline with the phone completely muted, zero intervention | Paused (with the project, 2026-11-13) |
+| ⭐Universal one-app full experience (TODO 3) | One ordinary Android app carrying everything (route A public APIs / B privileged digital path / C cloud-hosted contrast) | Any Android 9+ phone works with no computer | ⚠️ Paused (2026-11-13, see the notice above) |
 
 ## 4. Out of Scope
 
